@@ -10,9 +10,13 @@ def load_model(checkpoint_path, device="cpu", data_dir=None):
     from transformers import AutoConfig, AutoModel
     from .config import Config
     from .models import FUSENet
+    from .losses import INFORMATION_OBJECTIVE_VERSION
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if checkpoint.get("format_version") != 2:
-        raise ValueError("This evaluator expects the current FUSE-Net checkpoint format")
+    version = checkpoint.get("format_version")
+    if version not in (2, 3):
+        raise ValueError("This evaluator expects FUSE-Net checkpoint format 2 or 3")
+    if version == 3 and checkpoint.get("information_objective") != INFORMATION_OBJECTIVE_VERSION:
+        raise ValueError("Unsupported information objective in checkpoint")
     config = Config(**checkpoint["config"])
     if data_dir is not None:
         config.data_dir = str(Path(data_dir).expanduser().resolve())
@@ -22,6 +26,10 @@ def load_model(checkpoint_path, device="cpu", data_dir=None):
     encoder = AutoModel.from_config(AutoConfig.for_model(model_type, **values))
     model = FUSENet(config, text_encoder=encoder)
     model.load_state_dict(checkpoint["state_dict"], strict=True)
+    # Inference architecture is unchanged. Older checkpoints remain usable but
+    # are never relabeled as having been trained with the corrected objective.
+    model.training_objective_version = (checkpoint["information_objective"] if version == 3
+                                        else "legacy_signed_mse_v0")
     return model.to(device).eval(), config
 
 
@@ -46,6 +54,7 @@ def main(argv=None):
     metrics, predictions = evaluate(model, loaders[args.split], device, config.data)
     args.output_dir.mkdir(parents=True, exist_ok=False)
     write_json(args.output_dir / "metrics.json", {"split": args.split, "metrics": metrics,
+               "training_objective": model.training_objective_version,
                "checkpoint": file_identity(args.checkpoint), "dataset": file_identity(loaders[args.split].dataset.path)})
     write_predictions(args.output_dir / "predictions.csv", *predictions)
     print(json.dumps(metrics, indent=2, allow_nan=False))

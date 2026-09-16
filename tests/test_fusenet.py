@@ -17,7 +17,7 @@ from transformers import BertConfig, BertModel, BertTokenizerFast, RobertaConfig
 from FUSENet.config import Config
 from FUSENet.data_loader import Collator, MSADataset, make_loaders
 from FUSENet.evaluate import load_model
-from FUSENet.losses import contrastive_loss, information_loss, objective, reconstruction_loss
+from FUSENet.losses import INFORMATION_OBJECTIVE_VERSION, contrastive_loss, objective, reconstruction_loss
 from FUSENet.metrics import calculate_metrics, simsv2_classes
 from FUSENet.models import FUSENet, MODALITIES
 from FUSENet.runtime import select_device
@@ -126,15 +126,20 @@ class ModelTests(unittest.TestCase):
         shared["a"] = torch.tensor([[-1.0, 0.0]])
         self.assertLess(float(aligned), float(contrastive_loss(shared, private, 0.3)))
 
-    def test_original_information_proxy_has_the_documented_unresolved_direction(self):
-        # This is a diagnostic regression test, NOT a claim that the sign is correct.
-        for head in (self.model.info_gain_head_s, self.model.info_gain_head_h, self.model.info_gain_head_n):
-            torch.nn.init.zeros_(head.weight)
-            torch.nn.init.ones_(head.bias)
-        _, reps = self.model(batch())
-        information_loss(self.model, reps, torch.zeros(2)).backward()
-        self.assertLess(float(self.model.info_gain_head_s.bias.grad), 0)
-        self.assertGreater(float(self.model.info_gain_head_n.bias.grad), 0)
+    def test_disabled_information_term_does_not_update_auxiliary_heads(self):
+        self.config.info_gain_weight = 0.0
+        parameters = [p for head in (self.model.info_gain_head_s, self.model.info_gain_head_h,
+                                    self.model.info_gain_head_n) for p in head.parameters()]
+        before = [p.detach().clone() for p in parameters]
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.01, weight_decay=0.1)
+        output, reps = self.model(batch())
+        terms = objective(self.model, output, reps, batch()["labels"], self.config)
+        terms["total"].backward()
+        self.assertEqual(float(terms["information"]), 0.0)
+        self.assertTrue(all(p.grad is None for p in parameters))
+        optimizer.step()
+        for old, parameter in zip(before, parameters):
+            torch.testing.assert_close(old, parameter, rtol=0, atol=0)
 
 
 class MetricTests(unittest.TestCase):
@@ -246,6 +251,29 @@ class DataAndRunTests(unittest.TestCase):
         self.assertEqual(summary["metrics"]["mae"]["defined_runs"], 2)
         checkpoint = output / "seed_7/best.pt"
         model, config = load_model(checkpoint)
+        saved = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        self.assertEqual(saved["format_version"], 3)
+        self.assertEqual(model.training_objective_version, INFORMATION_OBJECTIVE_VERSION)
+        run = json.loads((output / "seed_7/run.json").read_text())
+        self.assertEqual(run["information_objective"]["version"], INFORMATION_OBJECTIVE_VERSION)
+        history = json.loads((output / "seed_7/history.json").read_text())
+        losses = history[0]["losses"]
+        self.assertAlmostEqual(losses["information_encoder"], losses["information_shared_mse"]
+                               + losses["information_private_mse"] - losses["information_noise_mse"], places=5)
+        # Version 2 has the same inference architecture and explicit legacy provenance.
+        legacy = {**saved, "format_version": 2}
+        legacy.pop("information_objective")
+        legacy_path = self.root / "legacy.pt"
+        torch.save(legacy, legacy_path)
+        legacy_model, _ = load_model(legacy_path)
+        self.assertEqual(legacy_model.training_objective_version, "legacy_signed_mse_v0")
+        with torch.no_grad():
+            torch.testing.assert_close(model(batch())[0], legacy_model(batch())[0], rtol=0, atol=0)
+        invalid = {**saved, "information_objective": "unknown_future_objective"}
+        invalid_path = self.root / "invalid.pt"
+        torch.save(invalid, invalid_path)
+        with self.assertRaisesRegex(ValueError, "objective"):
+            load_model(invalid_path)
         self.assertEqual(config.seed, 7)
         self.assertEqual(str(next(model.parameters()).device), "cpu")
         evaluation = self.root / "evaluation"
@@ -255,6 +283,8 @@ class DataAndRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         before = json.loads((output / "seed_7/test_metrics.json").read_text())["metrics"]
         after = json.loads((evaluation / "metrics.json").read_text())["metrics"]
+        self.assertEqual(json.loads((evaluation / "metrics.json").read_text())["training_objective"],
+                         INFORMATION_OBJECTIVE_VERSION)
         self.assertEqual(before, after)
         with (evaluation / "predictions.csv").open() as stream:
             self.assertEqual(len(list(csv.DictReader(stream))), 2)

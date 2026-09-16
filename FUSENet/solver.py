@@ -2,14 +2,13 @@
 
 import importlib.metadata
 import platform
-import warnings
 from pathlib import Path
 
 import numpy as np
 import torch
 
 from .data_loader import file_identity
-from .losses import objective
+from .losses import INFORMATION_OBJECTIVE_VERSION, objective
 from .metrics import calculate_metrics
 from .models import FUSENet
 from .runtime import move_batch, save_checkpoint, select_device, write_json, write_predictions
@@ -50,8 +49,6 @@ class Solver:
     def train(self):
         # Reserve one directory per run so previous measurements are not overwritten.
         self.output_dir.mkdir(parents=True, exist_ok=False)
-        if self.config.info_gain_weight:
-            warnings.warn("Eq. (3) score definition remains unresolved: the uploaded -MSE(shared)-MSE(private)+MSE(noise) proxy is retained. See docs/paper_alignment.md.", RuntimeWarning)
         self.tokenizer.save_pretrained(self.output_dir / "tokenizer")
         paths = sorted({str(loader.dataset.path) for loader in self.loaders.values()})
         versions = {}
@@ -64,7 +61,10 @@ class Solver:
                     "device": str(self.device), "dataset_files": [file_identity(path) for path in paths],
                     "split_counts": {name: len(loader.dataset) for name, loader in self.loaders.items()},
                     "encoder_revision_resolved": getattr(self.model.bert.config, "_commit_hash", None),
-                    "information_score_status": "unresolved_uploaded_mse_proxy"}
+                    "information_objective": {"version": INFORMATION_OBJECTIVE_VERSION,
+                        "enabled": bool(self.config.info_gain_weight),
+                        "score": "negative_mse", "auxiliary_prediction_bound": self.config.sentiment_bound,
+                        "noise_feature_gradient": "reversed", "noise_predictor_gradient": "ordinary"}}
         write_json(self.output_dir / "run.json", metadata)
         best_mae, remaining, history = float("inf"), self.config.patience, []
         for epoch in range(1, self.config.n_epoch + 1):
@@ -94,7 +94,8 @@ class Solver:
             if dev_mae < best_mae:
                 best_mae, remaining = dev_mae, self.config.patience
                 save_checkpoint(self.output_dir / "best.pt", {
-                    "format_version": 2, "epoch": epoch, "validation_mae": best_mae,
+                    "format_version": 3, "information_objective": INFORMATION_OBJECTIVE_VERSION,
+                    "epoch": epoch, "validation_mae": best_mae,
                     "config": self.config.to_dict(), "encoder_config": self.model.bert.config.to_dict(),
                     "state_dict": {name: value.detach().cpu() for name, value in self.model.state_dict().items()},
                 })

@@ -21,12 +21,12 @@ This repository contains one FUSE-Net implementation. The paper-to-code mapping 
 | Optimization, validation selection, checkpoints | [`FUSENet/solver.py`](FUSENet/solver.py), equation (17) |
 | MOSI/MOSEI and SIMSv2 evaluation | [`FUSENet/metrics.py`](FUSENet/metrics.py) |
 
-**Alignment status:** formula, data, and runtime corrections are implemented and tested. Complete paper equivalence is still unresolved for the information-score definition in equation (3), the manuscript's conflicting text-backbone descriptions, and the missing original experiment recipes. The uploaded MSE proxy for equation (3) is retained and emits a warning because its optimization direction conflicts with the stated semantic goal. Details are in [paper ↔ code](docs/paper_alignment.md).
+**Implementation status:** the information-loss direction is corrected. Shared/specific factors and all auxiliary predictors minimize prediction error; the noise representation receives an opposing gradient through a gradient reversal layer. Auxiliary predictions are bounded to the dataset's sentiment range. [The correction and its checks](docs/information_loss_fix.md) document the exact optimization rule. The main task remains ordinary MSE regression. This revision has synthetic validation; the paper's benchmark tables have not been rerun.
 
 ## Setup
 
 ```bash
-git clone https://github.com/ada-zy2425/FNroot.git FUSE-Net
+git clone https://github.com/ada-zy2425/FUSE-Net.git
 cd FUSE-Net
 python3.12 -m venv .venv
 source .venv/bin/activate
@@ -61,6 +61,8 @@ Multiple explicit seeds are supported with `--seeds`. For example, `--seeds 42 4
 
 Each seed writes `run.json`, `history.json`, `best.pt`, the tokenizer, `test_metrics.json`, and per-example `test_predictions.csv`. The best epoch is selected using **validation MAE**. Test evaluation follows checkpoint selection. `summary.json` reports the mean, sample standard deviation, and number of defined runs for every metric. Existing output directories are not overwritten.
 
+The information constraint is enabled by default (`--info_gain_weight 0.25`). `history.json` records its training surrogate, encoder objective, and separate shared/private/noise MSE values. `run.json` and checkpoints identify the corrected objective as `bounded_mse_grl_v1`. Setting the weight to zero disables auxiliary-head updates as well as their gradients to the factors.
+
 ## Evaluate a checkpoint
 
 ```bash
@@ -70,7 +72,7 @@ python -m FUSENet.evaluate \
   --output_dir runs/mosi_evaluation
 ```
 
-Evaluation restores the saved encoder configuration, trained weights, and tokenizer. It does not download a new pretrained encoder. The current checkpoint format includes the corrected shared/specific/noise fusion order; historical weights require an explicit migration rather than being loaded silently.
+Evaluation restores the saved encoder configuration, trained weights, and tokenizer. It does not download a new pretrained encoder. New checkpoints use format 3 and identify the corrected training objective. Format 2 checkpoints remain supported for inference and are explicitly marked as using the legacy information loss; the architecture is unchanged by this fix. Weights predating the shared/specific/noise fusion-order correction still require migration.
 
 ## Verify
 
@@ -78,7 +80,7 @@ Evaluation restores the saved encoder configuration, trained weights, and tokeni
 python -m unittest discover -s tests -v
 ```
 
-The offline synthetic suite checks BERT/RoBERTa forward and backward passes, unequal audio/visual lengths, padding invariance, Gaussian sampling, MDF normalization and fusion order, metric boundaries, singleton evaluation, split overlap, two-seed CLI training, and checkpoint evaluation. It also exposes the unresolved equation (3) gradient direction. Passing these checks does not reproduce the benchmark tables.
+The offline synthetic suite checks BERT/RoBERTa forward and backward passes, unequal audio/visual lengths, padding invariance, Gaussian sampling, MDF normalization and fusion order, metric boundaries, singleton evaluation, split overlap, two-seed CLI training, and checkpoint evaluation. Information-loss checks verify the predictor/encoder gradients, boundedness, isolation from other objectives, disabled-head behavior, and three controlled training seeds with fresh held-out probes. Passing these checks does not reproduce the benchmark tables.
 
 ## Paper-reported results
 

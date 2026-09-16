@@ -64,6 +64,11 @@ class Config:
     def to_dict(self):
         return asdict(self)
 
+    @property
+    def sentiment_bound(self):
+        """The annotation range, also used to bound auxiliary predictions."""
+        return 1.0 if self.data == "simsv2" else 3.0
+
 
 def training_parser():
     parser = argparse.ArgumentParser(description="Train FUSE-Net on MOSI, MOSEI, or SIMSv2.")
