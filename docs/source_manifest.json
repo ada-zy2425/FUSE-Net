@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-09-16",
+  "code_archive": {
+    "filename": "FUSENet(20260916-092832).zip",
+    "sha256": "1b17e2fbb2cf5e17fe9c1dacec0cf0afbd6e0999584014c2067aebe623ed6b1c"
+  },
+  "manuscript_original_filename": "fuse-net-cvpr2026 (3).pdf",
+  "note": "Source and PDF preserved as supplied. The framework image is a rendered crop of manuscript Figure 1. These hashes attest file identity, not experiment reproducibility.",
+  "files": [
+    {
+      "path": "FUSENet/config.py",
+      "size_bytes": 4771,
+      "sha256": "8c66be92c311745029083477bcc79e35455538a7c02c89aedcf48d9211ff65d7",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/create_dataset.py",
+      "size_bytes": 8694,
+      "sha256": "54e7043f55fb58fcb171e4df83350c88c112615a3dc13b4875efd9c5ad5c50bc",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/data_loader.py",
+      "size_bytes": 2361,
+      "sha256": "4e3e27262e6e3e82ce964a410aa30e009bc72c658f3012d24fd7093d30165e83",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/models.py",
+      "size_bytes": 6782,
+      "sha256": "1469c7f1472f6853fb621b2cc808e0e110ee5fda27d0b5e7b4b787d23ae17d0b",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/solver.py",
+      "size_bytes": 9512,
+      "sha256": "fe77a731ca4bc0f1a70d21abf8756f1bc52a69e6e16d5707383d1f1028d35c0e",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/train.py",
+      "size_bytes": 970,
+      "sha256": "5f7a401947b5ac6b6af986616db6ea034314987d039dfa76c045ac7e565684c9",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/utils/__init__.py",
+      "size_bytes": 91,
+      "sha256": "036cc84aa37ec133537379a386e72beb12e31faffc5413dfa5839a2a9c141db9",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/utils/convert.py",
+      "size_bytes": 454,
+      "sha256": "16c504e0cbaea501f56304fb678af80ba896a7fa523a8029cb5775dec729bfd8",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/utils/functions.py",
+      "size_bytes": 2687,
+      "sha256": "7f5fd45461bd085aa483fa4efa6bef701a5fb675811792e68931265aa9d73dd4",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "FUSENet/utils/time_track.py",
+      "size_bytes": 1054,
+      "sha256": "f5079846519c05fd69f8b0c1c76507df9c94da421b8db6e1cb218cad5c0f94ec",
+      "source": "uploaded_code_archive"
+    },
+    {
+      "path": "docs/paper/FUSE-Net.pdf",
+      "size_bytes": 549782,
+      "sha256": "473dae32a0ba06c065a8056bce10803122bb5538b44e530a993ce76042f90d51",
+      "source": "uploaded_manuscript"
+    }
+  ]
+}

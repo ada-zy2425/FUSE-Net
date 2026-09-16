@@ -33,3 +33,21 @@ tensorboard/
 build/
 dist/
 *.egg-info/
+
+# Local secrets and downloaded research assets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+CMU-MultimodalSDK/
+checkpoints/
+pretrained/
+*.pkl
+*.pickle
+*.csd
+*.safetensors
+
+# macOS archive metadata
+__MACOSX/
+._*

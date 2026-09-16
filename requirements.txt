@@ -1,0 +1,9 @@
+# Direct imports used by the supplied FUSENet source.
+# Original experiment versions were not provided; this is not a lockfile.
+# Install a CUDA-compatible PyTorch build for actual training.
+torch
+transformers
+numpy
+scikit-learn
+tqdm
+# mmsdk is installed separately from CMU-MultimodalSDK; see README.md.
