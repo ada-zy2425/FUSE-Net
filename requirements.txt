@@ -1,9 +1,7 @@
-# Direct imports used by the supplied FUSENet source.
-# Original experiment versions were not provided; this is not a lockfile.
-# Install a CUDA-compatible PyTorch build for actual training.
-torch
-transformers
-numpy
-scikit-learn
-tqdm
-# mmsdk is installed separately from CMU-MultimodalSDK; see README.md.
+# Direct dependency versions validated on Python 3.12 / CPU.
+# These are not the recovered environment of the historical paper experiments.
+torch==2.5.1
+transformers==4.46.3
+numpy==2.3.5
+scikit-learn==1.8.0
+# CMU-MultimodalSDK is needed only for raw MOSI/MOSEI preprocessing.

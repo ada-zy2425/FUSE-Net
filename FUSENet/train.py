@@ -1,38 +1,32 @@
-import sys
-import torch
-import numpy as np
-from config import get_config, Config
-from data_loader import get_loader
-from solver import Solver
+"""Run one or several explicitly selected seeds without changing evaluation splits."""
+
+import json
+
+from .config import Config, training_parser
 
 
-SEED = 42
-torch.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-np.random.seed(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+def main(argv=None):
+    parser = training_parser()
+    args = vars(parser.parse_args(argv))
+    seeds, output_dir = args.pop("seeds"), args.pop("output_dir")
+    if len(seeds) != len(set(seeds)):
+        parser.error("seeds must be unique")
+    configs = [Config(**args, seed=seed) for seed in seeds]
+    if output_dir.exists():
+        parser.error("output_dir already exists; choose a new experiment directory")
+    # Lazy imports allow --help without downloading or importing any models.
+    from .data_loader import make_loaders
+    from .runtime import seed_everything, write_json
+    from .solver import Solver, summarize_runs
+    results = []
+    for config in configs:
+        seed_everything(config.seed)
+        loaders, tokenizer = make_loaders(config)
+        result = Solver(config, loaders, tokenizer, output_dir / ("seed_" + str(config.seed))).train()
+        results.append(result)
+        write_json(output_dir / "summary.json", {"seeds": seeds[:len(results)], "metrics": summarize_runs(results)})
+        print(json.dumps({"seed": config.seed, "test": result}, indent=2, allow_nan=False))
 
-def run():
 
-    train_cfg = get_config(parse=True)
-    print("---- Training configuration ----")
-    print(train_cfg)
-
-
-    base_opts = {k: v for k, v in train_cfg.__dict__.items() if k not in ('mode',)}
-    dev_cfg = Config(**{**base_opts, 'mode': 'dev'})
-    test_cfg = Config(**{**base_opts, 'mode': 'test'})
-
-
-    train_loader = get_loader(train_cfg, shuffle=True)
-    dev_loader = get_loader(dev_cfg, shuffle=False)
-    test_loader = get_loader(test_cfg, shuffle=False)
-
-
-    solver = Solver(train_cfg, dev_cfg, test_cfg, train_loader, dev_loader, test_loader, is_train=True)
-    solver.build()
-    solver.train()
-
-if __name__ == '__main__':
-    run()
+if __name__ == "__main__":
+    main()

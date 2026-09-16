@@ -1,115 +1,82 @@
-import os
+"""Configuration for the single FUSE-Net implementation."""
+
 import argparse
-import pprint
-from datetime import datetime
+import math
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from torch import optim, nn
 
 
-dir_root = Path(__file__).resolve().parent.parent
-word_emb_path = dir_root / 'data' / 'glove.840B.300d.txt'
-sdk_dir = dir_root / 'CMU-MultimodalSDK'
-datasets_root = dir_root / 'datasets'
+ROOT = Path(__file__).resolve().parents[1]
 
-data_dict = {
-    'mosi':     datasets_root / 'MOSI',
-    'mosei':    datasets_root / 'MOSEI',
-    'ch-sims':  datasets_root / 'CH-SIMS',
-    'ur_funny': datasets_root / 'UR_FUNNY',
-    'iemocap':  datasets_root / 'IEMOCAP', 
-}
 
-optimizer_dict = {
-    'RMSprop': optim.RMSprop,
-    'Adam':    optim.Adam,
-    'AdamW':   optim.AdamW,
-}
-activation_dict = {
-    'elu':        nn.ELU,
-    'hardshrink': nn.Hardshrink,
-    'hardtanh':   nn.Hardtanh,
-    'leakyrelu':  nn.LeakyReLU,
-    'prelu':      nn.PReLU,
-    'relu':       nn.ReLU,
-    'rrelu':      nn.RReLU,
-    'tanh':       nn.Tanh,
-}
-
-def str2bool(v):
-    if isinstance(v, bool): return v
-    if v.lower() in ('yes','true','t','y','1'): return True
-    if v.lower() in ('no','false','f','n','0'): return False
-    raise argparse.ArgumentTypeError('Boolean value expected.')
-
+@dataclass
 class Config:
-    def __init__(self, **kw):
-        for k, v in kw.items():
-            if k == 'optimizer' and isinstance(v, str): v = optimizer_dict[v]
-            if k == 'activation' and isinstance(v, str): v = activation_dict[v]
-            setattr(self, k, v)
+    data: str = "mosi"
+    data_dir: str = ""
+    bert_dir: str = "roberta-large"
+    revision: str = "main"
+    batch_size: int = 64
+    n_epoch: int = 100
+    patience: int = 10
+    learning_rate: float = 3e-5
+    bert_learning_rate: float = 1.5e-5
+    weight_decay: float = 0.01
+    clip: float = 1.0
+    hidden_size: int = 128
+    dropout: float = 0.4
+    temperature: float = 0.3
+    task_weight: float = 1.0
+    info_weight: float = 0.1
+    info_gain_weight: float = 0.25
+    cycle_weight: float = 0.02
+    recon_weight: float = 0.015
+    vib_beta: float = 0.01
+    max_text_length: int = 512
+    seed: int = 42
+    device: str = "auto"
+    visual_size: int = 0
+    acoustic_size: int = 0
 
-    def __str__(self):
-        return "Configurations:\n" + pprint.pformat(self.__dict__)
+    def __post_init__(self):
+        if self.data not in {"mosi", "mosei", "simsv2"}:
+            raise ValueError("data must be mosi, mosei, or simsv2")
+        if not self.data_dir:
+            names = {"mosi": "MOSI", "mosei": "MOSEI", "simsv2": "SIMSv2"}
+            self.data_dir = str(ROOT / "datasets" / names[self.data])
+        self.data_dir = str(Path(self.data_dir).expanduser().resolve())
+        for name in ("batch_size", "n_epoch", "patience", "hidden_size", "max_text_length"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError("{} must be a positive integer".format(name))
+        if not isinstance(self.seed, int) or isinstance(self.seed, bool) or not 0 <= self.seed < 2**32:
+            raise ValueError("seed must be an integer in [0, 2**32)")
+        for name in ("learning_rate", "bert_learning_rate", "clip", "temperature"):
+            if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
+                raise ValueError("{} must be finite and positive".format(name))
+        for name in ("weight_decay", "task_weight", "info_weight", "info_gain_weight", "cycle_weight", "recon_weight", "vib_beta"):
+            if not math.isfinite(getattr(self, name)) or getattr(self, name) < 0:
+                raise ValueError("{} must be finite and nonnegative".format(name))
+        if not 0 <= self.dropout < 1:
+            raise ValueError("dropout must lie in [0, 1)")
+        if not self.bert_dir or not self.revision:
+            raise ValueError("Specify a text encoder and revision")
 
-def get_config(parse=True, **optional_kwargs):
-    p = argparse.ArgumentParser()
-
-    p.add_argument('--data',        type=str, default='mosi', help='mosi, mosei, ch-sims')
-    p.add_argument('--mode',        type=str, default='train')
-    p.add_argument('--use_bert',    type=str2bool, default=True)
-    p.add_argument('--bert_dir',    type=str, default='roberta-large')
-    now = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-    p.add_argument('--name',        type=str, default=now)
-
-
-    p.add_argument('--batch_size',     type=int,   default=64)
-    p.add_argument('--n_epoch',        type=int,   default=100)
-    p.add_argument('--patience',       type=int,   default=10)
-    p.add_argument('--optimizer',      type=str,   default='AdamW', help='Adam, AdamW, RMSprop')
-    p.add_argument('--learning_rate',  type=float, default=3e-5)
-    p.add_argument('--bert_learning_rate', type=float, default=1.5e-5)
-    p.add_argument('--weight_decay',   type=float, default=0.01)
-    p.add_argument('--warmup_steps',   type=int,   default=100)
-    p.add_argument('--clip',           type=float, default=1.0)
-    p.add_argument('--scheduler_type', type=str, default='plateau', help='plateau, cosine')
-    p.add_argument('--T_0',            type=int, default=10, help='T_0 for CosineAnnealingWarmRestarts')
-    p.add_argument('--T_mult',         type=int, default=1, help='T_mult for CosineAnnealingWarmRestarts')
-
-
-    p.add_argument('--task_weight',      type=float, default=1.0)
-    p.add_argument('--info_weight',      type=float, default=0.1, help="Weight for InfoNCE loss (shared-private alignment)")
-    p.add_argument('--siamese_weight',   type=float, default=0.0, help="Weight for Siamese loss on noise")
-    p.add_argument('--info_gain_weight', type=float, default=0.25, help="Weight for info gain loss")
-    p.add_argument('--cycle_weight',     type=float, default=0.02, help="Weight for cycle consistency loss")
-    p.add_argument('--recon_weight',     type=float, default=0.015, help="Weight for MRC reconstruction loss")
-    p.add_argument('--vib_beta',         type=float, default=0.01, help="Beta for VIB KL-divergence in MRC")
+    def to_dict(self):
+        return asdict(self)
 
 
-    p.add_argument('--rnncell',         type=str,   default='gru', help="lstm or gru")
-    p.add_argument('--embedding_size',  type=int,   default=300)
-    p.add_argument('--hidden_size',     type=int,   default=128)
-    p.add_argument('--dropout',         type=float, default=0.4)
-    p.add_argument('--activation',      type=str,   default='relu')
-    p.add_argument('--temperature',     type=float, default=0.3, help="Temperature for InfoNCE")
-    p.add_argument('--epsilon',         type=float, default=0.15, help="Epsilon for Siamese noise loss")
-
-    args = p.parse_args() if parse else p.parse_known_args()[0]
-    ds = args.data.lower()
-    if ds not in data_dict: raise ValueError(f"Unknown dataset {args.data}")
-    
-
-    if ds == 'mosi':
-        args.num_classes = 1
-    elif ds == 'mosei':
-        args.num_classes = 1
-    elif ds == 'ch-sims':
-        args.num_classes = 1
-
-    opts = vars(args)
-    opts['data_dir']      = data_dict[ds]
-    opts['dataset_dir']   = data_dict[ds] 
-    opts['sdk_dir']       = sdk_dir
-    opts['word_emb_path'] = word_emb_path
-    opts.update(optional_kwargs)
-
-    return Config(**opts)
+def training_parser():
+    parser = argparse.ArgumentParser(description="Train FUSE-Net on MOSI, MOSEI, or SIMSv2.")
+    parser.add_argument("--data", choices=("mosi", "mosei", "simsv2"), required=True)
+    parser.add_argument("--data_dir", default="")
+    parser.add_argument("--bert_dir", required=True, help="Explicit encoder choice: the paper names both RoBERTa and BERT-base.")
+    parser.add_argument("--revision", default="main", help="Prefer the model/tokenizer revision used for your experiment.")
+    defaults = Config()
+    for name in ("batch_size", "n_epoch", "patience", "hidden_size", "max_text_length"):
+        parser.add_argument("--" + name, type=int, default=getattr(defaults, name))
+    for name in ("learning_rate", "bert_learning_rate", "weight_decay", "clip", "dropout", "temperature", "task_weight", "info_weight", "info_gain_weight", "cycle_weight", "recon_weight", "vib_beta"):
+        parser.add_argument("--" + name, type=float, default=getattr(defaults, name))
+    parser.add_argument("--device", default="auto", help="auto, cpu, or a CUDA device such as cuda:0")
+    parser.add_argument("--seeds", nargs="+", type=int, default=[42])
+    parser.add_argument("--output_dir", type=Path, required=True)
+    return parser

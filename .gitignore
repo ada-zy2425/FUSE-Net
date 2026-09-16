@@ -1,53 +1,26 @@
-.DS_Store
-.vscode/
-.idea/
-
-__pycache__/
-*.pyc
+# Local environments and Python caches
 .venv/
-.env/
+__pycache__/
+*.py[cod]
 
-.ipynb_checkpoints/
-data/
+# Datasets, pretrained models, and generated experiment outputs
 datasets/
+data/
+runs/
+outputs/
+checkpoints/
+CMU-MultimodalSDK/
+*.pkl
+*.csd
 *.pt
 *.pth
-*.ckpt
-*.onnx
-*.npz
-*.npy
-*.h5
-*.zip
-*.tar
-*.gz
-
-runs/
-wandb/
-mlruns/
-logs/
-outputs/
-tensorboard/
-*.log
-
-# Build / dist
-build/
-dist/
-*.egg-info/
-
-# Local secrets and downloaded research assets
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-CMU-MultimodalSDK/
-checkpoints/
-pretrained/
-*.pkl
-*.pickle
-*.csd
 *.safetensors
 
-# macOS archive metadata
+# Machine-local metadata and secrets
+.DS_Store
 __MACOSX/
 ._*
+.env
+.env.*
+*.pem
+*.key
